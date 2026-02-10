@@ -122,22 +122,73 @@ cp .env.example .env
 # Edit .env with your configuration
 ```
 
-2. Deploy to network:
+2. Install deps / compile:
+```bash
+npm ci
+npx hardhat compile
+```
+
+3. Deploy to a specific network (one network per run):
 ```bash
 npx hardhat run scripts/deploy.js --network <network-name>
 ```
 
-### Per-Network Allowlist
+### Required Environment Variables
 
-The deploy script supports per-network allowlists. By default it will load:
+`scripts/deploy.js` requires:
 
-- `allowed-tokens.<network>.json` (if present), otherwise `allowed-tokens.json`
+- `PRIVATE_KEY`
+- `FEE_TOKEN_DECIMALS`
+- `ORDER_CREATION_FEE`
+- Fee token address for the selected network:
+  - `POLYGON_FEE_TOKEN_ADDRESS` (for `--network polygon`)
+  - `BSC_FEE_TOKEN_ADDRESS` (for `--network bsc`)
+  - `AMOY_FEE_TOKEN_ADDRESS` (for `--network amoy`)
+
+Hardhat network RPC URLs are configured in `hardhat.config.js`:
+
+- `POLYGON_RPC_URL`
+- `BSC_RPC_URL`
+- `AMOY_RPC_URL`
+
+### Allowlist (Per Network)
+
+The deploy script loads a per-network allowlist file by default:
+
+- `allowed-tokens.<network>.json` (e.g. `allowed-tokens.polygon.json`, `allowed-tokens.bsc.json`)
 
 You can override the allowlist path via:
 
 - `POLYGON_ALLOWED_TOKENS_PATH` (for `--network polygon`)
 - `BSC_ALLOWED_TOKENS_PATH` (for `--network bsc`)
-- `ALLOWED_TOKENS_PATH` (fallback)
+- `AMOY_ALLOWED_TOKENS_PATH` (for `--network amoy`)
+
+### Verification
+
+Automatic verification is attempted at the end of `scripts/deploy.js` when deploying to:
+
+- `polygon`
+- `bsc`
+- `amoy`
+
+Explorer API key (recommended):
+
+- `ETHERSCAN_API_KEY`
+
+If you prefer, you can set:
+
+- `POLYGONSCAN_API_KEY`
+- `BSCSCAN_API_KEY`
+
+Manual verification examples:
+
+```bash
+# BSC (example)
+npx hardhat verify --network bsc --constructor-args scripts/verify-args-bsc.js <DEPLOYED_ADDRESS>
+
+# Polygon (example)
+npx hardhat verify --network polygon --constructor-args scripts/verify-args-polygon.js <DEPLOYED_ADDRESS>
+```
 
 ## Architecture
 
