@@ -73,6 +73,7 @@ async function main() {
   const feeTokenEnvKeyByNetwork = {
     polygon: "POLYGON_FEE_TOKEN_ADDRESS",
     bsc: "BSC_FEE_TOKEN_ADDRESS",
+    amoy: "AMOY_FEE_TOKEN_ADDRESS",
   };
   const feeTokenEnvKey = feeTokenEnvKeyByNetwork[network.name];
   if (!feeTokenEnvKey) {
@@ -94,6 +95,7 @@ async function main() {
   const allowlistEnvKeyByNetwork = {
     polygon: "POLYGON_ALLOWED_TOKENS_PATH",
     bsc: "BSC_ALLOWED_TOKENS_PATH",
+    amoy: "AMOY_ALLOWED_TOKENS_PATH",
   };
   const allowlistEnvKey = allowlistEnvKeyByNetwork[network.name];
   if (!allowlistEnvKey) {
