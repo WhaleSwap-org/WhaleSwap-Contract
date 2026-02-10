@@ -81,25 +81,14 @@ async function main() {
     process.env.ALLOWED_TOKENS_PATH || "allowed-tokens.json"
   );
   let ALLOWED_TOKENS;
-
-  // For a general-purpose OTC swap, deploying with an empty allowlist disables allowlist checks.
-  const ENABLE_ALLOWLIST = (process.env.ENABLE_ALLOWLIST || "").toLowerCase() === "true";
   
   try {
-    if (ENABLE_ALLOWLIST) {
-      const allowedTokensData = fs.readFileSync(allowedTokensPath, "utf8");
-      ALLOWED_TOKENS = JSON.parse(allowedTokensData);
-      console.log(`Loaded ${ALLOWED_TOKENS.length} allowed tokens from ${allowedTokensPath}`);
-    } else {
-      ALLOWED_TOKENS = [];
-      console.log("Allowlist disabled (ENABLE_ALLOWLIST is not true). Deploying with empty allowed token list.");
-    }
+    const allowedTokensData = fs.readFileSync(allowedTokensPath, "utf8");
+    ALLOWED_TOKENS = JSON.parse(allowedTokensData);
+    console.log(`Loaded ${ALLOWED_TOKENS.length} allowed tokens from ${allowedTokensPath}`);
   } catch (error) {
     console.error("Error loading allowed tokens file:", error.message);
-    if (ENABLE_ALLOWLIST) {
-      throw new Error("ENABLE_ALLOWLIST=true but allowed tokens file could not be loaded.");
-    }
-    ALLOWED_TOKENS = [];
+    throw error;
   }
 
   console.log("Deploying OTCSwap contract...");

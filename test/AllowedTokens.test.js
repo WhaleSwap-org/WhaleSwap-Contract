@@ -49,14 +49,11 @@ describe('OTCSwap - Allowed Tokens', function () {
       expect(tokens).to.include(feeToken.target)
     })
 
-    it('allows deploying with an empty allowlist (disables allowlist checks)', async function () {
+    it('reverts if no allowed tokens provided', async function () {
       const OTCSwap = await ethers.getContractFactory('OTCSwap')
-      const openSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [])
-      await openSwap.waitForDeployment()
-
-      expect(await openSwap.getAllowedTokensCount()).to.equal(0n)
-      const tokens = await openSwap.getAllowedTokens()
-      expect(tokens).to.have.length(0)
+      await expect(OTCSwap.deploy(feeToken.target, ORDER_FEE, [])).to.be.revertedWith(
+        'Must specify allowed tokens'
+      )
     })
 
     it('reverts if invalid token address is provided in allowlist', async function () {
@@ -87,4 +84,3 @@ describe('OTCSwap - Allowed Tokens', function () {
     })
   })
 })
-

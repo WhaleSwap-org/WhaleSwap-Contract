@@ -4,7 +4,6 @@ const { anyValue } = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
 
 describe('OTCSwap', function () {
   let otcSwap
-  let openSwap
   let tokenA
   let tokenB
   let tokenC
@@ -37,10 +36,6 @@ describe('OTCSwap', function () {
       feeToken.target,
     ])
     await otcSwap.waitForDeployment()
-
-    // Same contract but with an empty allowlist: should accept any ERC20s.
-    openSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [])
-    await openSwap.waitForDeployment()
 
     // Fund maker + taker
     const initial = ethers.parseEther('10000')
@@ -131,22 +126,6 @@ describe('OTCSwap', function () {
           buyAmount
         )
       ).to.be.revertedWith('Sell token not allowed')
-    })
-
-    it('does not enforce allowlist when deployed with empty allowlist', async function () {
-      const sellAmount = ethers.parseEther('10')
-      const buyAmount = ethers.parseEther('20')
-
-      await approveMakerForOrder(openSwap, tokenC, sellAmount)
-      await expect(
-        openSwap.connect(maker).createOrder(
-          ZERO_ADDRESS,
-          tokenC.target,
-          sellAmount,
-          tokenB.target,
-          buyAmount
-        )
-      ).to.emit(openSwap, 'OrderCreated')
     })
   })
 

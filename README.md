@@ -7,7 +7,7 @@ A secure and efficient smart contract for peer-to-peer token swaps, enabling use
 - Peer-to-peer ERC20 token swaps
 - Optional counterparty restriction (set a specific taker or open to anyone)
 - Order creation fee (configurable by owner)
-- Optional token allowlist (owner-managed); can be disabled by deploying with an empty allowlist
+- Token allowlist (owner-managed)
 - OpenZeppelin standard compliance
 
 ## Security Features

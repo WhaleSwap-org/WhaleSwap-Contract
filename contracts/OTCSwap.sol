@@ -144,6 +144,7 @@ contract OTCSwap is ReentrancyGuard, Ownable {
     constructor(address _feeToken, uint256 _feeAmount, address[] memory _allowedTokens) Ownable(msg.sender) {
         require(_feeToken != address(0), "Invalid fee token");
         require(_feeAmount > 0, "Invalid fee amount");
+        require(_allowedTokens.length > 0, "Must specify allowed tokens");
         
         feeToken = _feeToken;
         orderCreationFeeAmount = _feeAmount;
@@ -224,12 +225,8 @@ contract OTCSwap is ReentrancyGuard, Ownable {
         require(sellAmount > 0, "Invalid sell amount");
         require(buyAmount > 0, "Invalid buy amount");
         require(sellToken != buyToken, "Cannot swap same token");
-        // If an allowlist is configured (non-empty), enforce it.
-        // If deployed with an empty allowlist, any ERC20 may be used.
-        if (allowedTokensList.length > 0) {
-            require(allowedTokens[sellToken], "Sell token not allowed");
-            require(allowedTokens[buyToken], "Buy token not allowed");
-        }
+        require(allowedTokens[sellToken], "Sell token not allowed");
+        require(allowedTokens[buyToken], "Buy token not allowed");
 
         require(
             IERC20(sellToken).balanceOf(msg.sender) >= sellAmount,
