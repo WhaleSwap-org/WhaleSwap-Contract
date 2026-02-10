@@ -62,11 +62,9 @@ module.exports = {
     }
   },
   etherscan: {
-    apiKey: {
-      polygon: process.env.POLYGONSCAN_API_KEY,
-      polygonMumbai: process.env.POLYGONSCAN_API_KEY,
-      bsc: process.env.BSCSCAN_API_KEY
-    }
+    // Etherscan v2: prefer a single API key that works across chains.
+    // You can set `ETHERSCAN_API_KEY` (recommended) or reuse an existing key value.
+    apiKey: process.env.ETHERSCAN_API_KEY || process.env.POLYGONSCAN_API_KEY || process.env.BSCSCAN_API_KEY
   },
   namedAccounts: {
     deployer: {
