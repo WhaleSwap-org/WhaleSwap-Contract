@@ -74,11 +74,28 @@ async function main() {
 
   const FEE_AMOUNT = ethers.parseUnits(ORDER_CREATION_FEE, FEE_TOKEN_DECIMALS);
   
-  // Load allowed tokens from JSON file
+  // Load allowed tokens from a per-network JSON file.
+  // Priority:
+  // 1) <NETWORK>_ALLOWED_TOKENS_PATH (POLYGON_..., BSC_...)
+  // 2) ALLOWED_TOKENS_PATH
+  // 3) allowed-tokens.<network>.json (if present)
+  // 4) allowed-tokens.json
+  const networkEnvPrefixByName = {
+    polygon: "POLYGON",
+    bsc: "BSC",
+  };
+  const networkEnvPrefix = networkEnvPrefixByName[network.name] || network.name.toUpperCase();
+  const perNetworkEnvKey = `${networkEnvPrefix}_ALLOWED_TOKENS_PATH`;
+
+  const perNetworkDefaultFile = `allowed-tokens.${network.name}.json`;
+  const perNetworkDefaultPath = path.join(__dirname, "..", perNetworkDefaultFile);
+
   const allowedTokensPath = path.join(
     __dirname,
     "..",
-    process.env.ALLOWED_TOKENS_PATH || "allowed-tokens.json"
+    process.env[perNetworkEnvKey] ||
+      process.env.ALLOWED_TOKENS_PATH ||
+      (fs.existsSync(perNetworkDefaultPath) ? perNetworkDefaultFile : "allowed-tokens.json")
   );
   let ALLOWED_TOKENS;
   
@@ -89,6 +106,14 @@ async function main() {
   } catch (error) {
     console.error("Error loading allowed tokens file:", error.message);
     throw error;
+  }
+
+  // Optional safety: ensure the fee token is tradable (i.e., in the allowlist).
+  if (!ALLOWED_TOKENS.some((a) => String(a).toLowerCase() === feeTokenAddress.toLowerCase())) {
+    console.warn(
+      `Fee token ${feeTokenAddress} is not in the allowlist file (${allowedTokensPath}). Adding it for deployment.`
+    );
+    ALLOWED_TOKENS.push(feeTokenAddress);
   }
 
   console.log("Deploying OTCSwap contract...");
@@ -111,7 +136,7 @@ async function main() {
     allowedTokens: ALLOWED_TOKENS
   });
 
-  if (network.name === "polygon" || network.name === "mumbai" || network.name === "amoy") {
+  if (network.name === "polygon" || network.name === "mumbai" || network.name === "amoy" || network.name === "bsc") {
     console.log("\n🔍 Starting contract verification process...");
     console.log("⏳ Waiting for block confirmations (this may take a few minutes)...");
     

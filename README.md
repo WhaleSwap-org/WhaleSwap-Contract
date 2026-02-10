@@ -127,6 +127,18 @@ cp .env.example .env
 npx hardhat run scripts/deploy.js --network <network-name>
 ```
 
+### Per-Network Allowlist
+
+The deploy script supports per-network allowlists. By default it will load:
+
+- `allowed-tokens.<network>.json` (if present), otherwise `allowed-tokens.json`
+
+You can override the allowlist path via:
+
+- `POLYGON_ALLOWED_TOKENS_PATH` (for `--network polygon`)
+- `BSC_ALLOWED_TOKENS_PATH` (for `--network bsc`)
+- `ALLOWED_TOKENS_PATH` (fallback)
+
 ## Architecture
 
 ### Order Structure
