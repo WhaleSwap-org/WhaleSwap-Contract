@@ -47,28 +47,59 @@ async function verifyContract(address, args, maxRetries = 3) {
 }
 
 async function main() {
-  const DAI_ADDRESS = "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063";
-  const FEE_AMOUNT = ethers.parseUnits("1", 18); // 1 DAI with 18 decimals
+  // Fee config: default to 1 USDC (6 decimals) unless overridden by env.
+  const FEE_TOKEN_DECIMALS = Number(process.env.FEE_TOKEN_DECIMALS || "6");
+  const ORDER_CREATION_FEE = process.env.ORDER_CREATION_FEE || "1";
+
+  // Network-specific fee token addresses can be set via env:
+  // - POLYGON_FEE_TOKEN_ADDRESS
+  // - BSC_FEE_TOKEN_ADDRESS
+  // Fallbacks are common USDC addresses.
+  const POLYGON_USDC = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
+  const BSC_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+
+  const feeTokenAddressByNetwork = {
+    polygon: process.env.POLYGON_FEE_TOKEN_ADDRESS || POLYGON_USDC,
+    bsc: process.env.BSC_FEE_TOKEN_ADDRESS || BSC_USDC,
+  };
+
+  const feeTokenAddress =
+    feeTokenAddressByNetwork[network.name] || process.env.FEE_TOKEN_ADDRESS;
+
+  if (!feeTokenAddress) {
+    throw new Error(
+      `Missing fee token address for network ${network.name}. Set FEE_TOKEN_ADDRESS (or POLYGON_FEE_TOKEN_ADDRESS / BSC_FEE_TOKEN_ADDRESS).`
+    );
+  }
+
+  const FEE_AMOUNT = ethers.parseUnits(ORDER_CREATION_FEE, FEE_TOKEN_DECIMALS);
   
   // Load allowed tokens from JSON file
-  const allowedTokensPath = path.join(__dirname, "..", "allowed-tokens.json");
+  const allowedTokensPath = path.join(
+    __dirname,
+    "..",
+    process.env.ALLOWED_TOKENS_PATH || "allowed-tokens.json"
+  );
   let ALLOWED_TOKENS;
+
+  // For a general-purpose OTC swap, deploying with an empty allowlist disables allowlist checks.
+  const ENABLE_ALLOWLIST = (process.env.ENABLE_ALLOWLIST || "").toLowerCase() === "true";
   
   try {
-    const allowedTokensData = fs.readFileSync(allowedTokensPath, "utf8");
-    ALLOWED_TOKENS = JSON.parse(allowedTokensData);
-    console.log(`Loaded ${ALLOWED_TOKENS.length} allowed tokens from ${allowedTokensPath}`);
+    if (ENABLE_ALLOWLIST) {
+      const allowedTokensData = fs.readFileSync(allowedTokensPath, "utf8");
+      ALLOWED_TOKENS = JSON.parse(allowedTokensData);
+      console.log(`Loaded ${ALLOWED_TOKENS.length} allowed tokens from ${allowedTokensPath}`);
+    } else {
+      ALLOWED_TOKENS = [];
+      console.log("Allowlist disabled (ENABLE_ALLOWLIST is not true). Deploying with empty allowed token list.");
+    }
   } catch (error) {
     console.error("Error loading allowed tokens file:", error.message);
-    console.log("Using fallback token list...");
-    // Fallback to default tokens if file loading fails
-    ALLOWED_TOKENS = [
-      "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", // USDC
-      "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619", // WETH on Polygon
-      "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6", // WBTC on Polygon
-      "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", // USDC.e on Polygon
-      DAI_ADDRESS  // DAI on Polygon
-    ];
+    if (ENABLE_ALLOWLIST) {
+      throw new Error("ENABLE_ALLOWLIST=true but allowed tokens file could not be loaded.");
+    }
+    ALLOWED_TOKENS = [];
   }
 
   console.log("Deploying OTCSwap contract...");
@@ -78,15 +109,16 @@ async function main() {
   console.log("Deploying from:", deployer.address);
 
   const OTCSwap = await ethers.getContractFactory("OTCSwap");
-  const otcSwap = await OTCSwap.deploy(DAI_ADDRESS, FEE_AMOUNT, ALLOWED_TOKENS);
+  const otcSwap = await OTCSwap.deploy(feeTokenAddress, FEE_AMOUNT, ALLOWED_TOKENS);
 
   await otcSwap.waitForDeployment();
   const address = await otcSwap.getAddress();
 
   console.log({
     address,
-    dai: DAI_ADDRESS,
-    feeAmount: ethers.formatUnits(FEE_AMOUNT, 18) + " DAI",
+    feeToken: feeTokenAddress,
+    feeAmount: ORDER_CREATION_FEE,
+    feeTokenDecimals: FEE_TOKEN_DECIMALS,
     allowedTokens: ALLOWED_TOKENS
   });
 
@@ -104,11 +136,11 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 60000));
     
     console.log("🚀 Starting verification...");
-    const verificationSuccess = await verifyContract(address, [DAI_ADDRESS, FEE_AMOUNT, ALLOWED_TOKENS]);
+    const verificationSuccess = await verifyContract(address, [feeTokenAddress, FEE_AMOUNT, ALLOWED_TOKENS]);
     
     if (!verificationSuccess) {
       console.log("\n📝 Manual verification command:");
-      console.log(`npx hardhat verify --network ${network.name} ${address} "${DAI_ADDRESS}" "${FEE_AMOUNT}" '${JSON.stringify(ALLOWED_TOKENS)}'`);
+      console.log(`npx hardhat verify --network ${network.name} ${address} "${feeTokenAddress}" "${FEE_AMOUNT}" '${JSON.stringify(ALLOWED_TOKENS)}'`);
     }
   } else {
     console.log("ℹ️  Skipping verification (not on a supported network)");

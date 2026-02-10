@@ -41,9 +41,14 @@ module.exports = {
       ].filter((key) => key !== undefined),
     },
     polygon: {
-      url: process.env.POLYGON_URL || "https://polygon-rpc.com",
+      url: process.env.POLYGON_RPC_URL || process.env.POLYGON_URL || "https://polygon-rpc.com",
       accounts: [process.env.PRIVATE_KEY].filter(Boolean),
       chainId: 137
+    },
+    bsc: {
+      url: process.env.BSC_RPC_URL || "",
+      accounts: [process.env.PRIVATE_KEY].filter(Boolean),
+      chainId: 56
     },
     mumbai: {
       url: process.env.MUMBAI_URL || "https://rpc-mumbai.maticvigil.com",
@@ -51,7 +56,7 @@ module.exports = {
       chainId: 80001
     },
     amoy: {
-      url: process.env.MUMBAI_URL || "https://rpc-amoy.polygon.technology/",
+      url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology/",
       accounts: [process.env.PRIVATE_KEY].filter(Boolean),
       chainId: 80002
     }
@@ -59,7 +64,8 @@ module.exports = {
   etherscan: {
     apiKey: {
       polygon: process.env.POLYGONSCAN_API_KEY,
-      polygonMumbai: process.env.POLYGONSCAN_API_KEY
+      polygonMumbai: process.env.POLYGONSCAN_API_KEY,
+      bsc: process.env.BSCSCAN_API_KEY
     }
   },
   namedAccounts: {
