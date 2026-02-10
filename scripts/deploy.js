@@ -2,7 +2,7 @@ const { ethers } = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 
-async function verifyContract(address, args, maxRetries = 3) {
+async function verifyContract(networkName, address, args, maxRetries = 3) {
   let retryCount = 0;
   
   while (retryCount < maxRetries) {
@@ -33,7 +33,7 @@ async function verifyContract(address, args, maxRetries = 3) {
         } else {
           console.error("❌ Max retries reached. Verification failed:", error.message);
           console.log("💡 Try running verification manually later with:");
-          console.log(`npx hardhat verify --network polygon ${address} "${args[0]}" "${args[1]}" '${JSON.stringify(args[2])}'`);
+          console.log(`npx hardhat verify --network ${networkName} ${address} "${args[0]}" "${args[1]}" '${JSON.stringify(args[2])}'`);
           return false;
         }
       } else {
@@ -46,58 +46,65 @@ async function verifyContract(address, args, maxRetries = 3) {
   return false;
 }
 
+function getRequiredEnv(key) {
+  const val = process.env[key];
+  if (val === undefined || String(val).trim() === "") {
+    throw new Error(`Missing required env var: ${key}`);
+  }
+  return val;
+}
+
+function resolvePathFromProject(p) {
+  // Allow absolute paths; otherwise resolve relative to project root.
+  if (path.isAbsolute(p)) return p;
+  return path.join(__dirname, "..", p);
+}
+
 async function main() {
-  // Fee config: default to 1 USDC (6 decimals) unless overridden by env.
-  const FEE_TOKEN_DECIMALS = Number(process.env.FEE_TOKEN_DECIMALS || "6");
-  const ORDER_CREATION_FEE = process.env.ORDER_CREATION_FEE || "1";
+  // Fee config (required): fee token must be per-network USDC and fee amount is 1 USDC.
+  const FEE_TOKEN_DECIMALS_RAW = getRequiredEnv("FEE_TOKEN_DECIMALS");
+  const ORDER_CREATION_FEE = getRequiredEnv("ORDER_CREATION_FEE");
 
-  // Network-specific fee token addresses can be set via env:
-  // - POLYGON_FEE_TOKEN_ADDRESS
-  // - BSC_FEE_TOKEN_ADDRESS
-  // Fallbacks are common USDC addresses.
-  // Polygon: default to USDC.e per your current allowlist.
-  const POLYGON_USDC = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
-  const BSC_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+  const FEE_TOKEN_DECIMALS = Number(FEE_TOKEN_DECIMALS_RAW);
+  if (!Number.isInteger(FEE_TOKEN_DECIMALS) || FEE_TOKEN_DECIMALS < 0 || FEE_TOKEN_DECIMALS > 255) {
+    throw new Error(`Invalid FEE_TOKEN_DECIMALS=${JSON.stringify(FEE_TOKEN_DECIMALS_RAW)} (expected integer 0..255)`);
+  }
 
-  const feeTokenAddressByNetwork = {
-    polygon: process.env.POLYGON_FEE_TOKEN_ADDRESS || POLYGON_USDC,
-    bsc: process.env.BSC_FEE_TOKEN_ADDRESS || BSC_USDC,
+  const feeTokenEnvKeyByNetwork = {
+    polygon: "POLYGON_FEE_TOKEN_ADDRESS",
+    bsc: "BSC_FEE_TOKEN_ADDRESS",
   };
-
-  const feeTokenAddress =
-    feeTokenAddressByNetwork[network.name] || process.env.FEE_TOKEN_ADDRESS;
-
-  if (!feeTokenAddress) {
+  const feeTokenEnvKey = feeTokenEnvKeyByNetwork[network.name];
+  if (!feeTokenEnvKey) {
     throw new Error(
-      `Missing fee token address for network ${network.name}. Set FEE_TOKEN_ADDRESS (or POLYGON_FEE_TOKEN_ADDRESS / BSC_FEE_TOKEN_ADDRESS).`
+      `Unsupported network ${network.name}. Add fee token env key mapping for this network.`
+    );
+  }
+  const feeTokenAddress = getRequiredEnv(feeTokenEnvKey);
+
+  let FEE_AMOUNT;
+  try {
+    FEE_AMOUNT = ethers.parseUnits(ORDER_CREATION_FEE, FEE_TOKEN_DECIMALS);
+  } catch (e) {
+    throw new Error(`Invalid ORDER_CREATION_FEE=${JSON.stringify(ORDER_CREATION_FEE)} or FEE_TOKEN_DECIMALS=${FEE_TOKEN_DECIMALS}: ${e.message}`);
+  }
+  
+  // Allowlist config: prefer explicit per-network env var; otherwise use the committed
+  // `allowed-tokens.<network>.json`. Do NOT fall back to a shared allowlist file.
+  const allowlistEnvKeyByNetwork = {
+    polygon: "POLYGON_ALLOWED_TOKENS_PATH",
+    bsc: "BSC_ALLOWED_TOKENS_PATH",
+  };
+  const allowlistEnvKey = allowlistEnvKeyByNetwork[network.name];
+  if (!allowlistEnvKey) {
+    throw new Error(
+      `Unsupported network ${network.name}. Add allowlist env key mapping for this network.`
     );
   }
 
-  const FEE_AMOUNT = ethers.parseUnits(ORDER_CREATION_FEE, FEE_TOKEN_DECIMALS);
-  
-  // Load allowed tokens from a per-network JSON file.
-  // Priority:
-  // 1) <NETWORK>_ALLOWED_TOKENS_PATH (POLYGON_..., BSC_...)
-  // 2) ALLOWED_TOKENS_PATH
-  // 3) allowed-tokens.<network>.json (if present)
-  // 4) allowed-tokens.json
-  const networkEnvPrefixByName = {
-    polygon: "POLYGON",
-    bsc: "BSC",
-  };
-  const networkEnvPrefix = networkEnvPrefixByName[network.name] || network.name.toUpperCase();
-  const perNetworkEnvKey = `${networkEnvPrefix}_ALLOWED_TOKENS_PATH`;
-
-  const perNetworkDefaultFile = `allowed-tokens.${network.name}.json`;
-  const perNetworkDefaultPath = path.join(__dirname, "..", perNetworkDefaultFile);
-
-  const allowedTokensPath = path.join(
-    __dirname,
-    "..",
-    process.env[perNetworkEnvKey] ||
-      process.env.ALLOWED_TOKENS_PATH ||
-      (fs.existsSync(perNetworkDefaultPath) ? perNetworkDefaultFile : "allowed-tokens.json")
-  );
+  const defaultAllowlistFile = `allowed-tokens.${network.name}.json`;
+  const allowlistPathRaw = process.env[allowlistEnvKey] || defaultAllowlistFile;
+  const allowedTokensPath = resolvePathFromProject(allowlistPathRaw);
   let ALLOWED_TOKENS;
   
   try {
@@ -109,12 +116,11 @@ async function main() {
     throw error;
   }
 
-  // Optional safety: ensure the fee token is tradable (i.e., in the allowlist).
+  // Safety: fee token must be tradable (i.e., in the allowlist).
   if (!ALLOWED_TOKENS.some((a) => String(a).toLowerCase() === feeTokenAddress.toLowerCase())) {
-    console.warn(
-      `Fee token ${feeTokenAddress} is not in the allowlist file (${allowedTokensPath}). Adding it for deployment.`
+    throw new Error(
+      `Fee token ${feeTokenAddress} is not in the allowlist file (${allowedTokensPath}). Add it to the allowlist (or fix ${feeTokenEnvKey}).`
     );
-    ALLOWED_TOKENS.push(feeTokenAddress);
   }
 
   console.log("Deploying OTCSwap contract...");
@@ -151,7 +157,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 60000));
     
     console.log("🚀 Starting verification...");
-    const verificationSuccess = await verifyContract(address, [feeTokenAddress, FEE_AMOUNT, ALLOWED_TOKENS]);
+    const verificationSuccess = await verifyContract(network.name, address, [feeTokenAddress, FEE_AMOUNT, ALLOWED_TOKENS]);
     
     if (!verificationSuccess) {
       console.log("\n📝 Manual verification command:");
