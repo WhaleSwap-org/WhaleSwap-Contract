@@ -55,7 +55,8 @@ async function main() {
   // - POLYGON_FEE_TOKEN_ADDRESS
   // - BSC_FEE_TOKEN_ADDRESS
   // Fallbacks are common USDC addresses.
-  const POLYGON_USDC = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359";
+  // Polygon: default to USDC.e per your current allowlist.
+  const POLYGON_USDC = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
   const BSC_USDC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
 
   const feeTokenAddressByNetwork = {
