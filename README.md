@@ -138,12 +138,15 @@ npx hardhat run scripts/deploy.js --network <network-name>
 `scripts/deploy.js` requires:
 
 - `PRIVATE_KEY`
-- `FEE_TOKEN_DECIMALS`
 - `ORDER_CREATION_FEE`
 - Fee token address for the selected network:
   - `POLYGON_FEE_TOKEN_ADDRESS` (for `--network polygon`)
   - `BSC_FEE_TOKEN_ADDRESS` (for `--network bsc`)
   - `AMOY_FEE_TOKEN_ADDRESS` (for `--network amoy`)
+- Fee token decimals for the selected network:
+  - `POLYGON_FEE_TOKEN_DECIMALS` (for `--network polygon`)
+  - `BSC_FEE_TOKEN_DECIMALS` (for `--network bsc`)
+  - `AMOY_FEE_TOKEN_DECIMALS` (for `--network amoy`)
 
 Hardhat network RPC URLs are configured in `hardhat.config.js`:
 

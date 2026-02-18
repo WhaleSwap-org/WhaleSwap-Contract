@@ -61,33 +61,46 @@ function resolvePathFromProject(p) {
 }
 
 async function main() {
-  // Fee config (required): fee token must be per-network USDC and fee amount is 1 USDC.
-  const FEE_TOKEN_DECIMALS_RAW = getRequiredEnv("FEE_TOKEN_DECIMALS");
   const ORDER_CREATION_FEE = getRequiredEnv("ORDER_CREATION_FEE");
-
-  const FEE_TOKEN_DECIMALS = Number(FEE_TOKEN_DECIMALS_RAW);
-  if (!Number.isInteger(FEE_TOKEN_DECIMALS) || FEE_TOKEN_DECIMALS < 0 || FEE_TOKEN_DECIMALS > 255) {
-    throw new Error(`Invalid FEE_TOKEN_DECIMALS=${JSON.stringify(FEE_TOKEN_DECIMALS_RAW)} (expected integer 0..255)`);
-  }
 
   const feeTokenEnvKeyByNetwork = {
     polygon: "POLYGON_FEE_TOKEN_ADDRESS",
     bsc: "BSC_FEE_TOKEN_ADDRESS",
     amoy: "AMOY_FEE_TOKEN_ADDRESS",
   };
+  const feeDecimalsEnvKeyByNetwork = {
+    polygon: "POLYGON_FEE_TOKEN_DECIMALS",
+    bsc: "BSC_FEE_TOKEN_DECIMALS",
+    amoy: "AMOY_FEE_TOKEN_DECIMALS",
+  };
   const feeTokenEnvKey = feeTokenEnvKeyByNetwork[network.name];
+  const feeDecimalsEnvKey = feeDecimalsEnvKeyByNetwork[network.name];
   if (!feeTokenEnvKey) {
     throw new Error(
       `Unsupported network ${network.name}. Add fee token env key mapping for this network.`
     );
   }
+  if (!feeDecimalsEnvKey) {
+    throw new Error(
+      `Unsupported network ${network.name}. Add fee decimals env key mapping for this network.`
+    );
+  }
   const feeTokenAddress = getRequiredEnv(feeTokenEnvKey);
+  const FEE_TOKEN_DECIMALS_RAW = getRequiredEnv(feeDecimalsEnvKey);
+  const FEE_TOKEN_DECIMALS = Number(FEE_TOKEN_DECIMALS_RAW);
+  if (!Number.isInteger(FEE_TOKEN_DECIMALS) || FEE_TOKEN_DECIMALS < 0 || FEE_TOKEN_DECIMALS > 255) {
+    throw new Error(
+      `Invalid ${feeDecimalsEnvKey}=${JSON.stringify(FEE_TOKEN_DECIMALS_RAW)} (expected integer 0..255)`
+    );
+  }
 
   let FEE_AMOUNT;
   try {
     FEE_AMOUNT = ethers.parseUnits(ORDER_CREATION_FEE, FEE_TOKEN_DECIMALS);
   } catch (e) {
-    throw new Error(`Invalid ORDER_CREATION_FEE=${JSON.stringify(ORDER_CREATION_FEE)} or FEE_TOKEN_DECIMALS=${FEE_TOKEN_DECIMALS}: ${e.message}`);
+    throw new Error(
+      `Invalid ORDER_CREATION_FEE=${JSON.stringify(ORDER_CREATION_FEE)} or ${feeDecimalsEnvKey}=${FEE_TOKEN_DECIMALS}: ${e.message}`
+    );
   }
   
   // Allowlist config: prefer explicit per-network env var; otherwise use the committed
