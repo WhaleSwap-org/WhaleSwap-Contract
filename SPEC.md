@@ -79,7 +79,7 @@ Rules:
 - this list is independent of the trading allowlist and MUST keep working even if a token is later removed from allowed trading tokens.
 - zero-balance entries MUST NOT remain in `claimableTokensByUser`.
 - when `claimable[user][token]` becomes zero (for example after withdraw), token MUST be removed from `claimableTokensByUser[user]`.
-- removal SHOULD use swap-and-pop plus an index mapping for O(1) maintenance, e.g. `claimableTokenIndex[user][token]`.
+- removal MUST use swap-and-pop plus an index mapping for O(1) maintenance, e.g. `claimableTokenIndex[user][token]`.
   - swap-and-pop means: move the last array element into the removed element’s slot, update that moved element’s index, then `pop()` the last slot.
 
 Required reads:
@@ -156,7 +156,7 @@ Effects:
     - `accumulatedFeesByToken[order.feeToken] -= order.orderCreationFee`
 - delete order state.
 
-### 6.5 `withdraw(token, amount)` (or equivalent claim function)
+### 6.5 `withdraw(token, amount)`
 
 Requirements:
 - caller has sufficient `claimable[caller][token]`
@@ -170,10 +170,40 @@ Effects:
 
 This function is the only path for users/cleaners to receive cancel/cleanup payouts.
 
+### 6.6 `withdrawAllClaims(...)`
+
+The contract MUST provide a withdraw-all option so users can claim all currently claimable token balances in one call.
+
+Required public signatures:
+- `withdrawAllClaims()`
+- `withdrawAllClaims(uint256 maxTokens)`
+
+Required internal implementation:
+- `_withdrawAllClaims(uint256 maxTokens)`
+- both public overloads MUST call the same internal implementation to avoid duplicated business logic.
+
+Requirements:
+- iterate caller's `claimableTokensByUser[msg.sender]`.
+- for each token with non-zero claimable balance:
+  - reduce claimable to zero,
+  - remove token from user list using swap-and-pop,
+  - transfer that token amount to caller.
+
+Behavior rules:
+- `maxTokens` MUST be used to bound iteration and avoid gas-limit failures for users with many claimable tokens.
+- `withdrawAllClaims()` MUST process all currently claimable tokens for caller by calling the same internal implementation with an internal max equal to current claimable token count.
+- `withdrawAllClaims(uint256 maxTokens)` MUST require `maxTokens > 0`.
+- `withdrawAllClaims` MUST be atomic: if any token transfer in the batch fails, the entire call MUST revert.
+- on revert, all state updates in that call MUST roll back (including claimable reductions and list removals).
+- users who encounter failing tokens can use single-token `withdraw(token, amount)` calls as fallback.
+
 Frontend retrieval flow (no indexer):
 - call `getClaimableTokens(user)`,
 - for each returned token, call `claimable(user, token)`,
 - all returned tokens are expected to have non-zero claimable balances.
+- frontend MAY offer:
+  - `withdraw(token, amount)` for single-token claims,
+  - `withdrawAllClaims(maxTokens)` for batched claims.
 
 ## 7. Audit-Driven Security Requirements
 
@@ -229,8 +259,12 @@ If the protocol wants to support fee-on-transfer/rebasing/non-standard tokens, b
 
 ## 10. Events (Required)
 
-At minimum, emit events for:
+The contract MUST emit events for:
 - order created/filled/canceled/cleaned,
 - fee config and allowlist updates,
 - claim credited (beneficiary, token, amount, reason/orderId),
 - claim withdrawn (beneficiary, token, amount).
+
+Per-token withdrawal event rule:
+- each successful token payout MUST emit exactly one claim-withdrawn event for that token.
+- this applies to both `withdraw(token, amount)` and `withdrawAllClaims(...)` (one event per token processed in batch).
