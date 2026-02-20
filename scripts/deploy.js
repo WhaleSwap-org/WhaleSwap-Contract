@@ -138,13 +138,13 @@ async function main() {
     );
   }
 
-  console.log("Deploying OTCSwap contract...");
+  console.log("Deploying WhaleSwap contract...");
   console.log("Network:", network.name);
 
   const [deployer] = await ethers.getSigners();
   console.log("Deploying from:", deployer.address);
 
-  const OTCSwap = await ethers.getContractFactory("OTCSwap");
+  const OTCSwap = await ethers.getContractFactory("WhaleSwap");
   const otcSwap = await OTCSwap.deploy(feeTokenAddress, FEE_AMOUNT, ALLOWED_TOKENS);
 
   await otcSwap.waitForDeployment();
