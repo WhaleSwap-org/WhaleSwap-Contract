@@ -133,6 +133,28 @@ npx hardhat compile
 npx hardhat run scripts/deploy.js --network <network-name>
 ```
 
+### Local Development Deployment (No New Env Vars)
+
+For local UI + contract testing, use the dedicated local script (does not use extra env vars):
+
+1. Start local node:
+```bash
+npx hardhat node
+```
+
+2. In another terminal, deploy local fee token, trade tokens, and OTCSwap:
+```bash
+npm run deploy:local
+```
+
+This script:
+- Deploys `LFT` (fee token), `LTKA`, and `LTKB`
+- Deploys `OTCSwap` with those tokens in the initial allowlist
+- Funds local test accounts with the deployed tokens
+- Writes deployment output to `deployments/local.json`
+- Updates UI local deployment file at `../whaleswap-ui/js/local-dev.deployment.js`
+- Syncs UI ABI at `../whaleswap-ui/js/abi/OTCSwap.js`
+
 ### Required Environment Variables
 
 `scripts/deploy.js` requires:
