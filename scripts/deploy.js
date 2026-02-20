@@ -138,7 +138,7 @@ async function main() {
     );
   }
 
-  console.log("Deploying OTCSwap contract...");
+  console.log("Deploying WhaleSwap contract...");
   console.log("Network:", network.name);
 
   const [deployer] = await ethers.getSigners();

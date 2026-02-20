@@ -36,7 +36,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     const sellToken = await MisbehavingToken.deploy()
     await sellToken.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     const otcSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [
       sellToken.target,
       buyToken.target,
@@ -80,7 +80,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     const feeTokenB = await TestToken.deploy('Fee B', 'FEEB')
     await feeTokenB.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     const otcSwap = await OTCSwap.deploy(feeTokenA.target, ORDER_FEE, [
       sellToken.target,
       buyToken.target,
@@ -127,7 +127,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     const sellToken = await MisbehavingToken.deploy()
     await sellToken.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     const otcSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [
       sellToken.target,
       buyToken.target,
@@ -163,7 +163,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     const sellToken = await MisbehavingToken.deploy()
     await sellToken.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     const otcSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [
       sellToken.target,
       buyToken.target,
@@ -201,7 +201,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     const feeToken = await TestToken.deploy('Fee', 'FEE')
     await feeToken.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     const otcSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [
       sellToken.target,
       buyToken.target,
@@ -248,7 +248,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     const sellTokenB = await MisbehavingToken.deploy()
     await sellTokenB.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     const otcSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [
       sellTokenA.target,
       sellTokenB.target,

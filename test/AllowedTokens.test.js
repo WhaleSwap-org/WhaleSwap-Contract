@@ -25,7 +25,7 @@ describe('OTCSwap - Allowed Tokens', function () {
     feeToken = await TestToken.deploy('DAI Stablecoin', 'DAI')
     await feeToken.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     otcSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [
       tokenA.target,
       tokenB.target,
@@ -50,14 +50,14 @@ describe('OTCSwap - Allowed Tokens', function () {
     })
 
     it('reverts if no allowed tokens provided', async function () {
-      const OTCSwap = await ethers.getContractFactory('OTCSwap')
+      const OTCSwap = await ethers.getContractFactory('WhaleSwap')
       await expect(OTCSwap.deploy(feeToken.target, ORDER_FEE, [])).to.be.revertedWith(
         'Must specify allowed tokens'
       )
     })
 
     it('reverts if invalid token address is provided in allowlist', async function () {
-      const OTCSwap = await ethers.getContractFactory('OTCSwap')
+      const OTCSwap = await ethers.getContractFactory('WhaleSwap')
       await expect(
         OTCSwap.deploy(feeToken.target, ORDER_FEE, [ethers.ZeroAddress])
       ).to.be.revertedWith('Invalid token address')

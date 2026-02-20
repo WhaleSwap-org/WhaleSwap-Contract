@@ -29,7 +29,7 @@ describe('OTCSwap', function () {
     feeToken = await TestToken.deploy('DAI Stablecoin', 'DAI')
     await feeToken.waitForDeployment()
 
-    const OTCSwap = await ethers.getContractFactory('OTCSwap')
+    const OTCSwap = await ethers.getContractFactory('WhaleSwap')
     otcSwap = await OTCSwap.deploy(feeToken.target, ORDER_FEE, [
       tokenA.target,
       tokenB.target,
