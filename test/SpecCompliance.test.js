@@ -292,7 +292,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     expect(await otcSwap.claimable(maker.address, sellTokenB.target)).to.equal(beforeB)
   })
 
-  it('demonstrates FoT sell-token insolvency between recorded claimable and real balance', async function () {
+  it('should not create insolvency for FoT sell tokens (expected fail until fixed)', async function () {
     const [maker] = await ethers.getSigners()
 
     const TestToken = await ethers.getContractFactory('TestToken')
@@ -322,19 +322,12 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
       .connect(maker)
       .createOrder(ethers.ZeroAddress, sellToken.target, SELL_AMOUNT, buyToken.target, BUY_AMOUNT)
 
-    // Contract receives only 50% due to transfer tax.
-    expect(await sellToken.balanceOf(otcSwap.target)).to.equal(SELL_AMOUNT / 2n)
-
     await otcSwap.connect(maker).cancelOrder(0)
-    expect(await otcSwap.claimable(maker.address, sellToken.target)).to.equal(SELL_AMOUNT)
-
-    // Full withdrawal fails because contract only holds half the recorded claim.
-    await expect(otcSwap.connect(maker).withdraw(sellToken.target, SELL_AMOUNT)).to.be.reverted
-    // Partial amount equal to actual balance can still be withdrawn.
-    await expect(otcSwap.connect(maker).withdraw(sellToken.target, SELL_AMOUNT / 2n)).to.not.be.reverted
+    const claimable = await otcSwap.claimable(maker.address, sellToken.target)
+    await expect(otcSwap.connect(maker).withdraw(sellToken.target, claimable)).to.not.be.reverted
   })
 
-  it('demonstrates FoT fee-token insolvency for cleanup-fee claims', async function () {
+  it('should not create insolvency for FoT fee tokens on cleanup reward (expected fail until fixed)', async function () {
     const [maker, cleaner] = await ethers.getSigners()
 
     const TestToken = await ethers.getContractFactory('TestToken')
@@ -364,15 +357,46 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
       .connect(maker)
       .createOrder(ethers.ZeroAddress, sellToken.target, SELL_AMOUNT, buyToken.target, BUY_AMOUNT)
 
-    // Internal accounting records full fee, but contract received only 50%.
-    expect(await otcSwap.accumulatedFeesByToken(feeToken.target)).to.equal(ORDER_FEE)
-    expect(await feeToken.balanceOf(otcSwap.target)).to.equal(ORDER_FEE / 2n)
-
     await advanceAfterExpiryAndGrace()
     await otcSwap.connect(cleaner).cleanupExpiredOrders()
 
-    // Cleaner is credited full fee claim, but contract has insufficient token balance.
-    expect(await otcSwap.claimable(cleaner.address, feeToken.target)).to.equal(ORDER_FEE)
-    await expect(otcSwap.connect(cleaner).withdraw(feeToken.target, ORDER_FEE)).to.be.reverted
+    const claimable = await otcSwap.claimable(cleaner.address, feeToken.target)
+    await expect(otcSwap.connect(cleaner).withdraw(feeToken.target, claimable)).to.not.be.reverted
+  })
+
+  it('should allow FoT sell-token order to be filled without breaking buyer flow (expected fail until fixed)', async function () {
+    const [maker, taker] = await ethers.getSigners()
+
+    const TestToken = await ethers.getContractFactory('TestToken')
+    const buyToken = await TestToken.deploy('Buy', 'BUY')
+    await buyToken.waitForDeployment()
+    const feeToken = await TestToken.deploy('Fee', 'FEE')
+    await feeToken.waitForDeployment()
+
+    const DeflationaryFeeToken = await ethers.getContractFactory('DeflationaryFeeToken')
+    const sellToken = await DeflationaryFeeToken.deploy('FoT Sell', 'FSELL')
+    await sellToken.waitForDeployment()
+
+    const WhaleSwap = await ethers.getContractFactory('WhaleSwap')
+    const otcSwap = await WhaleSwap.deploy(feeToken.target, ORDER_FEE, [
+      sellToken.target,
+      buyToken.target,
+      feeToken.target,
+    ])
+    await otcSwap.waitForDeployment()
+
+    await sellToken.transfer(maker.address, SELL_AMOUNT)
+    await buyToken.transfer(taker.address, BUY_AMOUNT)
+    await feeToken.transfer(maker.address, ORDER_FEE * 10n)
+    await sellToken.connect(maker).approve(otcSwap.target, SELL_AMOUNT)
+    await feeToken.connect(maker).approve(otcSwap.target, ORDER_FEE * 10n)
+    await buyToken.connect(taker).approve(otcSwap.target, BUY_AMOUNT)
+
+    await otcSwap
+      .connect(maker)
+      .createOrder(ethers.ZeroAddress, sellToken.target, SELL_AMOUNT, buyToken.target, BUY_AMOUNT)
+
+    // Desired behavior: taker should be able to fill the order and complete buy flow.
+    await expect(otcSwap.connect(taker).fillOrder(0)).to.not.be.reverted
   })
 })
