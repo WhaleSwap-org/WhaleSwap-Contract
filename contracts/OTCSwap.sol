@@ -239,34 +239,41 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
 
         uint256 orderId = nextOrderId;
         nextOrderId = orderId + 1;
+        uint256 feeBalanceBefore = IERC20(orderFeeToken).balanceOf(address(this));
+        IERC20(orderFeeToken).safeTransferFrom(msg.sender, address(this), orderFeeAmount);
+        uint256 actualOrderFee = IERC20(orderFeeToken).balanceOf(address(this)) - feeBalanceBefore;
+        require(actualOrderFee > 0, "Invalid received fee");
+
+        uint256 sellBalanceBefore = IERC20(sellToken).balanceOf(address(this));
+        IERC20(sellToken).safeTransferFrom(msg.sender, address(this), sellAmount);
+        uint256 actualSellAmount = IERC20(sellToken).balanceOf(address(this)) - sellBalanceBefore;
+        require(actualSellAmount > 0, "Invalid received sell amount");
+
         orders[orderId] = Order({
             maker: msg.sender,
             taker: taker,
             sellToken: sellToken,
-            sellAmount: sellAmount,
+            sellAmount: actualSellAmount,
             buyToken: buyToken,
             buyAmount: buyAmount,
             timestamp: block.timestamp,
             status: OrderStatus.Active,
             feeToken: orderFeeToken,
-            orderCreationFee: orderFeeAmount
+            orderCreationFee: actualOrderFee
         });
-        accumulatedFeesByToken[orderFeeToken] += orderFeeAmount;
-
-        IERC20(orderFeeToken).safeTransferFrom(msg.sender, address(this), orderFeeAmount);
-        IERC20(sellToken).safeTransferFrom(msg.sender, address(this), sellAmount);
+        accumulatedFeesByToken[orderFeeToken] += actualOrderFee;
 
         emit OrderCreated(
             orderId,
             msg.sender,
             taker,
             sellToken,
-            sellAmount,
+            actualSellAmount,
             buyToken,
             buyAmount,
             block.timestamp,
             orderFeeToken,
-            orderFeeAmount
+            actualOrderFee
         );
 
         return orderId;
