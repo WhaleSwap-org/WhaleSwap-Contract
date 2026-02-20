@@ -11,36 +11,42 @@ contract OTCSwap is ReentrancyGuard, Ownable {
 
     uint256 public constant ORDER_EXPIRY = 7 days;
     uint256 public constant GRACE_PERIOD = 7 days;
-    uint256 public constant MAX_RETRY_ATTEMPTS = 10;
 
     address public feeToken;
     uint256 public orderCreationFeeAmount;
-    uint256 public accumulatedFees;
     uint256 public firstOrderId;
     uint256 public nextOrderId;
     bool public isDisabled;
-    
+
     mapping(address => bool) public allowedTokens;
     address[] public allowedTokensList;
 
+    // Per-token fee accounting.
+    mapping(address => uint256) public accumulatedFeesByToken;
+
+    // Claimable balances by user and token.
+    mapping(address => mapping(address => uint256)) public claimable;
+    mapping(address => address[]) private claimableTokensByUser;
+    mapping(address => mapping(address => bool)) public hasClaimableToken;
+    mapping(address => mapping(address => uint256)) public claimableTokenIndex;
+
     enum OrderStatus {
-        Active,     // Order is active and can be filled
-        Filled,     // Order was filled
-        Canceled    // Order was canceled by maker
+        Active,
+        Filled,
+        Canceled
     }
 
     struct Order {
         address maker;
-        address taker;  // address(0) if open to anyone
+        address taker; // address(0) if open to anyone
         address sellToken;
         uint256 sellAmount;
         address buyToken;
         uint256 buyAmount;
         uint256 timestamp;
         OrderStatus status;
-        address feeToken;
-        uint256 orderCreationFee;  // Fee paid when order was created
-        uint256 tries;             // Number of cleanup attempts
+        address feeToken; // Snapshot at create time
+        uint256 orderCreationFee; // Snapshot at create time
     }
 
     mapping(uint256 => Order) public orders;
@@ -81,14 +87,6 @@ contract OTCSwap is ReentrancyGuard, Ownable {
         uint256 timestamp
     );
 
-    event RetryOrder(
-        uint256 indexed oldOrderId,
-        uint256 indexed newOrderId,
-        address indexed maker,
-        uint256 tries,
-        uint256 timestamp
-    );
-
     event CleanupFeesDistributed(
         address indexed recipient,
         address indexed feeToken,
@@ -96,30 +94,8 @@ contract OTCSwap is ReentrancyGuard, Ownable {
         uint256 timestamp
     );
 
-    event CleanupError(
-        uint256 indexed orderId,
-        string reason,
-        uint256 timestamp
-    );
-
     event ContractDisabled(
         address indexed owner,
-        uint256 timestamp
-    );
-
-    event TransferError(
-        uint256 indexed orderId,
-        string tokenType,
-        string reason,
-        uint256 timestamp
-    );
-
-    event TokenTransferAttempt(
-        uint256 indexed orderId,
-        bool success,
-        bytes returnData,
-        uint256 fromBalance,
-        uint256 toBalance,
         uint256 timestamp
     );
 
@@ -135,6 +111,22 @@ contract OTCSwap is ReentrancyGuard, Ownable {
         uint256 timestamp
     );
 
+    event ClaimCredited(
+        address indexed beneficiary,
+        address indexed token,
+        uint256 amount,
+        uint256 indexed orderId,
+        string reason,
+        uint256 timestamp
+    );
+
+    event ClaimWithdrawn(
+        address indexed beneficiary,
+        address indexed token,
+        uint256 amount,
+        uint256 timestamp
+    );
+
     modifier validOrder(uint256 orderId) {
         require(orders[orderId].maker != address(0), "Order does not exist");
         require(orders[orderId].status == OrderStatus.Active, "Order is not active");
@@ -145,17 +137,20 @@ contract OTCSwap is ReentrancyGuard, Ownable {
         require(_feeToken != address(0), "Invalid fee token");
         require(_feeAmount > 0, "Invalid fee amount");
         require(_allowedTokens.length > 0, "Must specify allowed tokens");
-        
+
         feeToken = _feeToken;
         orderCreationFeeAmount = _feeAmount;
-        
-        // Initialize allowed tokens
+
+        // Initialize allowlist with de-duplication.
         for (uint256 i = 0; i < _allowedTokens.length; i++) {
-            require(_allowedTokens[i] != address(0), "Invalid token address");
-            allowedTokens[_allowedTokens[i]] = true;
-            allowedTokensList.push(_allowedTokens[i]);
+            address token = _allowedTokens[i];
+            require(token != address(0), "Invalid token address");
+            if (!allowedTokens[token]) {
+                allowedTokens[token] = true;
+                allowedTokensList.push(token);
+            }
         }
-        
+
         emit FeeConfigUpdated(_feeToken, _feeAmount, block.timestamp);
     }
 
@@ -176,21 +171,20 @@ contract OTCSwap is ReentrancyGuard, Ownable {
     function updateAllowedTokens(address[] memory tokens, bool[] memory allowed) external onlyOwner {
         require(tokens.length == allowed.length, "Arrays length mismatch");
         require(tokens.length > 0, "Empty arrays");
-        
+
         for (uint256 i = 0; i < tokens.length; i++) {
-            require(tokens[i] != address(0), "Invalid token address");
-            
-            if (allowed[i] && !allowedTokens[tokens[i]]) {
-                // Adding new token
-                allowedTokens[tokens[i]] = true;
-                allowedTokensList.push(tokens[i]);
-            } else if (!allowed[i] && allowedTokens[tokens[i]]) {
-                // Removing existing token
-                allowedTokens[tokens[i]] = false;
-                _removeFromAllowedTokensList(tokens[i]);
+            address token = tokens[i];
+            require(token != address(0), "Invalid token address");
+
+            if (allowed[i] && !allowedTokens[token]) {
+                allowedTokens[token] = true;
+                allowedTokensList.push(token);
+            } else if (!allowed[i] && allowedTokens[token]) {
+                allowedTokens[token] = false;
+                _removeFromAllowedTokensList(token);
             }
         }
-        
+
         emit AllowedTokensUpdated(tokens, allowed, block.timestamp);
     }
 
@@ -212,6 +206,10 @@ contract OTCSwap is ReentrancyGuard, Ownable {
         return allowedTokensList.length;
     }
 
+    function getClaimableTokens(address user) external view returns (address[] memory) {
+        return claimableTokensByUser[user];
+    }
+
     function createOrder(
         address taker,
         address sellToken,
@@ -227,37 +225,19 @@ contract OTCSwap is ReentrancyGuard, Ownable {
         require(sellToken != buyToken, "Cannot swap same token");
         require(allowedTokens[sellToken], "Sell token not allowed");
         require(allowedTokens[buyToken], "Buy token not allowed");
+        require(IERC20(sellToken).allowance(msg.sender, address(this)) >= sellAmount, "Insufficient allowance for sell token");
+        require(IERC20(feeToken).allowance(msg.sender, address(this)) >= orderCreationFeeAmount, "Insufficient allowance for fee");
 
-        require(
-            IERC20(sellToken).balanceOf(msg.sender) >= sellAmount,
-            "Insufficient balance for sell token"
-        );
-        require(
-            IERC20(sellToken).allowance(msg.sender, address(this)) >= sellAmount,
-            "Insufficient allowance for sell token"
-        );
-        require(
-            IERC20(feeToken).balanceOf(msg.sender) >= orderCreationFeeAmount,
-            "Insufficient balance for fee"
-        );
-        require(
-            IERC20(feeToken).allowance(msg.sender, address(this)) >= orderCreationFeeAmount,
-            "Insufficient allowance for fee"
-        );
-        require(
-            IERC20(sellToken).allowance(msg.sender, address(this)) >= sellAmount,
-            "Insufficient allowance for sell token"
-        );
+        // Snapshot current fee config for this order.
+        address orderFeeToken = feeToken;
+        uint256 orderFeeAmount = orderCreationFeeAmount;
 
-        // Transfer fee token
-        IERC20(feeToken).safeTransferFrom(msg.sender, address(this), orderCreationFeeAmount);
-        accumulatedFees += orderCreationFeeAmount;
+        IERC20(orderFeeToken).safeTransferFrom(msg.sender, address(this), orderFeeAmount);
+        accumulatedFeesByToken[orderFeeToken] += orderFeeAmount;
 
-        // Transfer sell token
         IERC20(sellToken).safeTransferFrom(msg.sender, address(this), sellAmount);
 
         uint256 orderId = nextOrderId++;
-
         orders[orderId] = Order({
             maker: msg.sender,
             taker: taker,
@@ -267,9 +247,8 @@ contract OTCSwap is ReentrancyGuard, Ownable {
             buyAmount: buyAmount,
             timestamp: block.timestamp,
             status: OrderStatus.Active,
-            feeToken: feeToken,
-            orderCreationFee: orderCreationFeeAmount,
-            tries: 0
+            feeToken: orderFeeToken,
+            orderCreationFee: orderFeeAmount
         });
 
         emit OrderCreated(
@@ -281,8 +260,8 @@ contract OTCSwap is ReentrancyGuard, Ownable {
             buyToken,
             buyAmount,
             block.timestamp,
-            feeToken,
-            orderCreationFeeAmount
+            orderFeeToken,
+            orderFeeAmount
         );
 
         return orderId;
@@ -291,234 +270,164 @@ contract OTCSwap is ReentrancyGuard, Ownable {
     function fillOrder(uint256 orderId) external nonReentrant validOrder(orderId) {
         Order storage order = orders[orderId];
 
-        require(
-            block.timestamp <= order.timestamp + ORDER_EXPIRY,
-            "Order has expired"
-        );
-        require(
-            order.taker == address(0) || order.taker == msg.sender,
-            "Not authorized to fill this order"
-        );
-        require(
-            IERC20(order.buyToken).balanceOf(msg.sender) >= order.buyAmount,
-            "Insufficient balance for buy token"
-        );
-        require(
-            IERC20(order.buyToken).allowance(msg.sender, address(this)) >= order.buyAmount,
-            "Insufficient allowance for buy token"
-        );
+        require(block.timestamp <= order.timestamp + ORDER_EXPIRY, "Order has expired");
+        require(order.taker == address(0) || order.taker == msg.sender, "Not authorized to fill this order");
+        require(IERC20(order.buyToken).allowance(msg.sender, address(this)) >= order.buyAmount, "Insufficient allowance for buy token");
 
-        // Update order status first
         order.status = OrderStatus.Filled;
-
-        // First transfer: buyToken from buyer to maker (using transferFrom)
-        try this.externalTransferFrom(IERC20(order.buyToken), msg.sender, order.maker, order.buyAmount) {
-            // Second transfer: sellToken from contract to buyer
-            try this.externalTransfer(IERC20(order.sellToken), msg.sender, order.sellAmount) {
-                emit OrderFilled(
-                    orderId,
-                    order.maker,
-                    msg.sender,
-                    order.sellToken,
-                    order.sellAmount,
-                    order.buyToken,
-                    order.buyAmount,
-                    block.timestamp
-                );
-            } catch Error(string memory reason) {
-                // Revert order status since second transfer failed
-                order.status = OrderStatus.Active;
-                emit TransferError(orderId, "sellToken", reason, block.timestamp);
-                revert(string(abi.encodePacked("Sell token transfer failed: ", reason)));
-            } catch (bytes memory) {
-                // Revert order status since second transfer failed
-                order.status = OrderStatus.Active;
-                emit TransferError(orderId, "sellToken", "Unknown error", block.timestamp);
-                revert("Sell token transfer failed with unknown error");
-            }
-        } catch Error(string memory reason) {
-            // Revert order status since first transfer failed
-            order.status = OrderStatus.Active;
-            emit TransferError(orderId, "buyToken", reason, block.timestamp);
-            revert(string(abi.encodePacked("Buy token transfer failed: ", reason)));
-        } catch (bytes memory) {
-            // Revert order status since first transfer failed
-            order.status = OrderStatus.Active;
-            emit TransferError(orderId, "buyToken", "Unknown error", block.timestamp);
-            revert("Buy token transfer failed with unknown error");
+        if (order.taker == address(0)) {
+            order.taker = msg.sender;
         }
-    }
 
-    // Public function to enable try/catch for external transfers
-    function externalTransfer(IERC20 token, address to, uint256 amount) external {
-        require(msg.sender == address(this), "Only callable by the contract itself");
-        token.safeTransfer(to, amount);
-    }
+        IERC20(order.buyToken).safeTransferFrom(msg.sender, order.maker, order.buyAmount);
+        IERC20(order.sellToken).safeTransfer(msg.sender, order.sellAmount);
 
-    // Public function to enable try/catch for external transferFrom
-    function externalTransferFrom(IERC20 token, address from, address to, uint256 amount) external {
-        require(msg.sender == address(this), "Only callable by the contract itself");
-        token.safeTransferFrom(from, to, amount);
+        emit OrderFilled(
+            orderId,
+            order.maker,
+            msg.sender,
+            order.sellToken,
+            order.sellAmount,
+            order.buyToken,
+            order.buyAmount,
+            block.timestamp
+        );
     }
 
     function cancelOrder(uint256 orderId) external nonReentrant validOrder(orderId) {
         Order storage order = orders[orderId];
         require(order.maker == msg.sender, "Only maker can cancel order");
-        require(
-            block.timestamp <= order.timestamp + ORDER_EXPIRY + GRACE_PERIOD,
-            "Grace period has expired"
-        );
 
-        // Update order status first
         order.status = OrderStatus.Canceled;
-
-        // Then return sell tokens to maker
-        IERC20(order.sellToken).safeTransfer(msg.sender, order.sellAmount);
+        _creditClaim(order.maker, order.sellToken, order.sellAmount, orderId, "cancel-principal");
 
         emit OrderCanceled(orderId, msg.sender, block.timestamp);
-    }
-
-    function _handleFailedCleanup(
-        uint256 orderId,
-        Order storage order,
-        string memory reason
-    ) internal returns (uint256, address) {
-        emit CleanupError(orderId, reason, block.timestamp);
-
-        // If max retries reached, delete order and distribute fee
-        if (order.tries >= MAX_RETRY_ATTEMPTS) {
-            emit CleanupError(orderId, "Max retries reached", block.timestamp);
-            address feeTokenAddress = order.feeToken;
-            uint256 feeAmount = order.orderCreationFee;
-            delete orders[orderId];
-            return (feeAmount, feeTokenAddress);
-        } else {
-            // check if order.maker is not a zero address
-            require(order.maker != address(0), "Order maker is zero address in cleanup");
-
-            // Create a deep copy of the order in memory before modifying it
-            Order memory tempOrder = Order({
-                maker: order.maker,
-                sellToken: order.sellToken,
-                buyToken: order.buyToken,
-                sellAmount: order.sellAmount,
-                buyAmount: order.buyAmount,
-                tries: order.tries + 1,
-                status: OrderStatus.Active,
-                timestamp: block.timestamp,
-                taker: order.taker,
-                feeToken: order.feeToken,
-                orderCreationFee: order.orderCreationFee
-            });
-            require(tempOrder.maker != address(0), "tempOrder maker is zero address in cleanup");
-
-            // Create new order with incremented tries
-            uint256 newOrderId = nextOrderId++;
-            orders[newOrderId] = tempOrder;
-
-            require(orders[newOrderId].maker != address(0), "orders[newOrderId] maker is zero address in cleanup");
-
-            emit RetryOrder(
-                orderId,
-                newOrderId,
-                orders[newOrderId].maker,
-                orders[newOrderId].tries,
-                block.timestamp
-            );
-
-            delete orders[orderId];
-
-            return (0, address(0));
-        }
     }
 
     function cleanupExpiredOrders() external nonReentrant {
         require(firstOrderId < nextOrderId, "No orders to clean up");
 
-        Order storage order = orders[firstOrderId];
+        uint256 orderId = firstOrderId;
+        Order storage order = orders[orderId];
 
-        // Skip empty orders
+        // Skip empty slots.
         if (order.maker == address(0)) {
             firstOrderId++;
             return;
         }
 
-        uint256 feesToDistribute = 0;
-        address currentFeeToken;
-
-        // Check if grace period has passed
-        if (block.timestamp > order.timestamp + ORDER_EXPIRY + GRACE_PERIOD) {
-            // Only attempt token transfer for Active orders
-            if (order.status == OrderStatus.Active) {
-                IERC20 token = IERC20(order.sellToken);
-
-                bool transferSuccess;
-                try this.attemptTransfer(token, order.maker, order.sellAmount) {
-                    transferSuccess = true;
-                } catch Error(string memory reason) {
-                    transferSuccess = false;
-                    emit CleanupError(firstOrderId, reason, block.timestamp);
-                } catch (bytes memory) {
-                    transferSuccess = false;
-                    emit CleanupError(firstOrderId, "Unknown error", block.timestamp);
-                }
-
-                if (!transferSuccess) {
-                    (uint256 fees, address feeTokenAddr) = _handleFailedCleanup(firstOrderId, order, "Token transfer failed");
-                    if (fees > 0) {
-                        feesToDistribute = fees;
-                        currentFeeToken = feeTokenAddr;
-                    }
-                } else {
-                    feesToDistribute = order.orderCreationFee;
-                    currentFeeToken = order.feeToken;
-                    address maker = order.maker;
-                    delete orders[firstOrderId];
-                    emit OrderCleanedUp(firstOrderId, maker, block.timestamp);
-                }
-            } else {
-                feesToDistribute = order.orderCreationFee;
-                currentFeeToken = order.feeToken;
-                address maker = order.maker;
-                delete orders[firstOrderId];
-                emit OrderCleanedUp(firstOrderId, maker, block.timestamp);
-            }
-            firstOrderId++;
+        // Not yet cleanup-eligible.
+        if (block.timestamp <= order.timestamp + ORDER_EXPIRY + GRACE_PERIOD) {
+            return;
         }
 
-        if (feesToDistribute > 0 && feesToDistribute <= accumulatedFees) {
-            accumulatedFees -= feesToDistribute;
-            IERC20(currentFeeToken).safeTransfer(msg.sender, feesToDistribute);
-            emit CleanupFeesDistributed(msg.sender, currentFeeToken, feesToDistribute, block.timestamp);
+        // Active orders still have escrowed sell token owned by maker.
+        if (order.status == OrderStatus.Active) {
+            _creditClaim(order.maker, order.sellToken, order.sellAmount, orderId, "cleanup-active-principal");
+        }
+
+        uint256 cleanupFee = order.orderCreationFee;
+        if (cleanupFee > 0) {
+            require(accumulatedFeesByToken[order.feeToken] >= cleanupFee, "Insufficient fee balance");
+            accumulatedFeesByToken[order.feeToken] -= cleanupFee;
+            _creditClaim(msg.sender, order.feeToken, cleanupFee, orderId, "cleanup-fee");
+            emit CleanupFeesDistributed(msg.sender, order.feeToken, cleanupFee, block.timestamp);
+        }
+
+        address maker = order.maker;
+        delete orders[orderId];
+        firstOrderId++;
+
+        emit OrderCleanedUp(orderId, maker, block.timestamp);
+    }
+
+    function withdraw(address token, uint256 amount) external nonReentrant {
+        require(token != address(0), "Invalid token");
+        require(amount > 0, "Invalid amount");
+
+        uint256 available = claimable[msg.sender][token];
+        require(available >= amount, "Insufficient claimable balance");
+
+        uint256 remaining = available - amount;
+        claimable[msg.sender][token] = remaining;
+        if (remaining == 0) {
+            _removeClaimableToken(msg.sender, token);
+        }
+
+        IERC20(token).safeTransfer(msg.sender, amount);
+        emit ClaimWithdrawn(msg.sender, token, amount, block.timestamp);
+    }
+
+    function withdrawAllClaims() external nonReentrant {
+        _withdrawAllClaims(claimableTokensByUser[msg.sender].length);
+    }
+
+    function withdrawAllClaims(uint256 maxTokens) external nonReentrant {
+        require(maxTokens > 0, "Invalid maxTokens");
+        _withdrawAllClaims(maxTokens);
+    }
+
+    function _withdrawAllClaims(uint256 maxTokens) internal {
+        uint256 processed = 0;
+        while (processed < maxTokens && claimableTokensByUser[msg.sender].length > 0) {
+            uint256 lastIndex = claimableTokensByUser[msg.sender].length - 1;
+            address token = claimableTokensByUser[msg.sender][lastIndex];
+            uint256 amount = claimable[msg.sender][token];
+
+            // Defensive cleanup for invariant drift.
+            if (amount == 0) {
+                _removeClaimableToken(msg.sender, token);
+                continue;
+            }
+
+            claimable[msg.sender][token] = 0;
+            _removeClaimableToken(msg.sender, token);
+
+            IERC20(token).safeTransfer(msg.sender, amount);
+            emit ClaimWithdrawn(msg.sender, token, amount, block.timestamp);
+            processed++;
         }
     }
 
-    function attemptTransfer(IERC20 token, address to, uint256 amount) external {
-        require(msg.sender == address(this), "Only self");
+    function _creditClaim(
+        address beneficiary,
+        address token,
+        uint256 amount,
+        uint256 orderId,
+        string memory reason
+    ) internal {
+        if (amount == 0) {
+            return;
+        }
+        require(beneficiary != address(0), "Invalid beneficiary");
+        require(token != address(0), "Invalid token");
 
-        // Get balances before transfer
-        uint256 fromBalance = token.balanceOf(address(this));
-        uint256 toBalance = token.balanceOf(to);
-
-        bool success;
-        bytes memory returnData;
-
-        try token.transfer(to, amount) returns (bool result) {
-            success = result;
-            returnData = abi.encode(result);
-        } catch (bytes memory err) {
-            success = false;
-            returnData = err;
+        if (!hasClaimableToken[beneficiary][token]) {
+            hasClaimableToken[beneficiary][token] = true;
+            claimableTokenIndex[beneficiary][token] = claimableTokensByUser[beneficiary].length;
+            claimableTokensByUser[beneficiary].push(token);
         }
 
-        emit TokenTransferAttempt(
-            0,
-            success,
-            returnData,
-            fromBalance,
-            toBalance,
-            block.timestamp
-        );
-        require(success, "Token transfer failed");
+        claimable[beneficiary][token] += amount;
+        emit ClaimCredited(beneficiary, token, amount, orderId, reason, block.timestamp);
+    }
+
+    function _removeClaimableToken(address user, address token) internal {
+        if (!hasClaimableToken[user][token]) {
+            return;
+        }
+
+        uint256 index = claimableTokenIndex[user][token];
+        uint256 lastIndex = claimableTokensByUser[user].length - 1;
+
+        if (index != lastIndex) {
+            address movedToken = claimableTokensByUser[user][lastIndex];
+            claimableTokensByUser[user][index] = movedToken;
+            claimableTokenIndex[user][movedToken] = index;
+        }
+
+        claimableTokensByUser[user].pop();
+        delete claimableTokenIndex[user][token];
+        hasClaimableToken[user][token] = false;
     }
 }

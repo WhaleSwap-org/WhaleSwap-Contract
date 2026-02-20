@@ -285,7 +285,7 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
 
     const beforeA = await otcSwap.claimable(maker.address, sellTokenA.target)
     const beforeB = await otcSwap.claimable(maker.address, sellTokenB.target)
-    await expect(otcSwap.connect(maker).withdrawAllClaims(10)).to.be.reverted
+    await expect(otcSwap.connect(maker)['withdrawAllClaims(uint256)'](10)).to.be.reverted
 
     // Atomic behavior: both claimables remain intact after failed batch.
     expect(await otcSwap.claimable(maker.address, sellTokenA.target)).to.equal(beforeA)
