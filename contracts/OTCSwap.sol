@@ -20,6 +20,7 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
 
     mapping(address => bool) public allowedTokens;
     address[] public allowedTokensList;
+    mapping(address => uint256) private allowedTokenIndex;
 
     // Per-token fee accounting.
     mapping(address => uint256) public accumulatedFeesByToken;
@@ -147,6 +148,7 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
             require(token != address(0), "Invalid token address");
             if (!allowedTokens[token]) {
                 allowedTokens[token] = true;
+                allowedTokenIndex[token] = allowedTokensList.length;
                 allowedTokensList.push(token);
             }
         }
@@ -178,10 +180,11 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
 
             if (allowed[i] && !allowedTokens[token]) {
                 allowedTokens[token] = true;
+                allowedTokenIndex[token] = allowedTokensList.length;
                 allowedTokensList.push(token);
             } else if (!allowed[i] && allowedTokens[token]) {
-                allowedTokens[token] = false;
                 _removeFromAllowedTokensList(token);
+                allowedTokens[token] = false;
             }
         }
 
@@ -189,13 +192,17 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
     }
 
     function _removeFromAllowedTokensList(address tokenToRemove) internal {
-        for (uint256 i = 0; i < allowedTokensList.length; i++) {
-            if (allowedTokensList[i] == tokenToRemove) {
-                allowedTokensList[i] = allowedTokensList[allowedTokensList.length - 1];
-                allowedTokensList.pop();
-                break;
-            }
+        uint256 index = allowedTokenIndex[tokenToRemove];
+        uint256 lastIndex = allowedTokensList.length - 1;
+
+        if (index != lastIndex) {
+            address movedToken = allowedTokensList[lastIndex];
+            allowedTokensList[index] = movedToken;
+            allowedTokenIndex[movedToken] = index;
         }
+
+        allowedTokensList.pop();
+        delete allowedTokenIndex[tokenToRemove];
     }
 
     function getAllowedTokens() external view returns (address[] memory) {
