@@ -239,12 +239,8 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
         address orderFeeToken = feeToken;
         uint256 orderFeeAmount = orderCreationFeeAmount;
 
-        IERC20(orderFeeToken).safeTransferFrom(msg.sender, address(this), orderFeeAmount);
-        accumulatedFeesByToken[orderFeeToken] += orderFeeAmount;
-
-        IERC20(sellToken).safeTransferFrom(msg.sender, address(this), sellAmount);
-
-        uint256 orderId = nextOrderId++;
+        uint256 orderId = nextOrderId;
+        nextOrderId = orderId + 1;
         orders[orderId] = Order({
             maker: msg.sender,
             taker: taker,
@@ -257,6 +253,10 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
             feeToken: orderFeeToken,
             orderCreationFee: orderFeeAmount
         });
+        accumulatedFeesByToken[orderFeeToken] += orderFeeAmount;
+
+        IERC20(orderFeeToken).safeTransferFrom(msg.sender, address(this), orderFeeAmount);
+        IERC20(sellToken).safeTransferFrom(msg.sender, address(this), sellAmount);
 
         emit OrderCreated(
             orderId,
