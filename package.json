@@ -1,5 +1,6 @@
 {
   "name": "hardhat-project",
+  "license": "MIT",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
     "@nomicfoundation/hardhat-verify": "^2.1.0",
