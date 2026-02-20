@@ -291,4 +291,88 @@ describe('OTCSwap - Spec Compliance Regressions', function () {
     expect(await otcSwap.claimable(maker.address, sellTokenA.target)).to.equal(beforeA)
     expect(await otcSwap.claimable(maker.address, sellTokenB.target)).to.equal(beforeB)
   })
+
+  it('demonstrates FoT sell-token insolvency between recorded claimable and real balance', async function () {
+    const [maker] = await ethers.getSigners()
+
+    const TestToken = await ethers.getContractFactory('TestToken')
+    const buyToken = await TestToken.deploy('Buy', 'BUY')
+    await buyToken.waitForDeployment()
+    const feeToken = await TestToken.deploy('Fee', 'FEE')
+    await feeToken.waitForDeployment()
+
+    const DeflationaryFeeToken = await ethers.getContractFactory('DeflationaryFeeToken')
+    const sellToken = await DeflationaryFeeToken.deploy('FoT Sell', 'FSELL')
+    await sellToken.waitForDeployment()
+
+    const WhaleSwap = await ethers.getContractFactory('WhaleSwap')
+    const otcSwap = await WhaleSwap.deploy(feeToken.target, ORDER_FEE, [
+      sellToken.target,
+      buyToken.target,
+      feeToken.target,
+    ])
+    await otcSwap.waitForDeployment()
+
+    await sellToken.transfer(maker.address, SELL_AMOUNT)
+    await feeToken.transfer(maker.address, ORDER_FEE * 10n)
+    await sellToken.connect(maker).approve(otcSwap.target, SELL_AMOUNT)
+    await feeToken.connect(maker).approve(otcSwap.target, ORDER_FEE * 10n)
+
+    await otcSwap
+      .connect(maker)
+      .createOrder(ethers.ZeroAddress, sellToken.target, SELL_AMOUNT, buyToken.target, BUY_AMOUNT)
+
+    // Contract receives only 50% due to transfer tax.
+    expect(await sellToken.balanceOf(otcSwap.target)).to.equal(SELL_AMOUNT / 2n)
+
+    await otcSwap.connect(maker).cancelOrder(0)
+    expect(await otcSwap.claimable(maker.address, sellToken.target)).to.equal(SELL_AMOUNT)
+
+    // Full withdrawal fails because contract only holds half the recorded claim.
+    await expect(otcSwap.connect(maker).withdraw(sellToken.target, SELL_AMOUNT)).to.be.reverted
+    // Partial amount equal to actual balance can still be withdrawn.
+    await expect(otcSwap.connect(maker).withdraw(sellToken.target, SELL_AMOUNT / 2n)).to.not.be.reverted
+  })
+
+  it('demonstrates FoT fee-token insolvency for cleanup-fee claims', async function () {
+    const [maker, cleaner] = await ethers.getSigners()
+
+    const TestToken = await ethers.getContractFactory('TestToken')
+    const sellToken = await TestToken.deploy('Sell', 'SELL')
+    await sellToken.waitForDeployment()
+    const buyToken = await TestToken.deploy('Buy', 'BUY')
+    await buyToken.waitForDeployment()
+
+    const DeflationaryFeeToken = await ethers.getContractFactory('DeflationaryFeeToken')
+    const feeToken = await DeflationaryFeeToken.deploy('FoT Fee', 'FFEE')
+    await feeToken.waitForDeployment()
+
+    const WhaleSwap = await ethers.getContractFactory('WhaleSwap')
+    const otcSwap = await WhaleSwap.deploy(feeToken.target, ORDER_FEE, [
+      sellToken.target,
+      buyToken.target,
+      feeToken.target,
+    ])
+    await otcSwap.waitForDeployment()
+
+    await sellToken.transfer(maker.address, SELL_AMOUNT)
+    await feeToken.transfer(maker.address, ORDER_FEE * 10n)
+    await sellToken.connect(maker).approve(otcSwap.target, SELL_AMOUNT)
+    await feeToken.connect(maker).approve(otcSwap.target, ORDER_FEE * 10n)
+
+    await otcSwap
+      .connect(maker)
+      .createOrder(ethers.ZeroAddress, sellToken.target, SELL_AMOUNT, buyToken.target, BUY_AMOUNT)
+
+    // Internal accounting records full fee, but contract received only 50%.
+    expect(await otcSwap.accumulatedFeesByToken(feeToken.target)).to.equal(ORDER_FEE)
+    expect(await feeToken.balanceOf(otcSwap.target)).to.equal(ORDER_FEE / 2n)
+
+    await advanceAfterExpiryAndGrace()
+    await otcSwap.connect(cleaner).cleanupExpiredOrders()
+
+    // Cleaner is credited full fee claim, but contract has insufficient token balance.
+    expect(await otcSwap.claimable(cleaner.address, feeToken.target)).to.equal(ORDER_FEE)
+    await expect(otcSwap.connect(cleaner).withdraw(feeToken.target, ORDER_FEE)).to.be.reverted
+  })
 })
