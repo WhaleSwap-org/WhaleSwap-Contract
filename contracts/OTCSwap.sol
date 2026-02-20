@@ -232,8 +232,6 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
         require(sellToken != buyToken, "Cannot swap same token");
         require(allowedTokens[sellToken], "Sell token not allowed");
         require(allowedTokens[buyToken], "Buy token not allowed");
-        require(IERC20(sellToken).allowance(msg.sender, address(this)) >= sellAmount, "Insufficient allowance for sell token");
-        require(IERC20(feeToken).allowance(msg.sender, address(this)) >= orderCreationFeeAmount, "Insufficient allowance for fee");
 
         // Snapshot current fee config for this order.
         address orderFeeToken = feeToken;
@@ -279,12 +277,8 @@ contract WhaleSwap is ReentrancyGuard, Ownable {
 
         require(block.timestamp <= order.timestamp + ORDER_EXPIRY, "Order has expired");
         require(order.taker == address(0) || order.taker == msg.sender, "Not authorized to fill this order");
-        require(IERC20(order.buyToken).allowance(msg.sender, address(this)) >= order.buyAmount, "Insufficient allowance for buy token");
 
         order.status = OrderStatus.Filled;
-        if (order.taker == address(0)) {
-            order.taker = msg.sender;
-        }
 
         IERC20(order.buyToken).safeTransferFrom(msg.sender, order.maker, order.buyAmount);
         IERC20(order.sellToken).safeTransfer(msg.sender, order.sellAmount);
