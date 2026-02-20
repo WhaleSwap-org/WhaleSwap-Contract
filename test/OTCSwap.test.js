@@ -173,7 +173,7 @@ describe('OTCSwap', function () {
       )
     })
 
-    it('maker can cancel an active order and receive sell tokens back', async function () {
+    it('maker can cancel an active order and receive sell tokens via claim withdrawal', async function () {
       const sellAmount = ethers.parseEther('10')
       const buyAmount = ethers.parseEther('20')
 
@@ -188,7 +188,13 @@ describe('OTCSwap', function () {
 
       const makerA0 = await tokenA.balanceOf(maker.address)
       await expect(otcSwap.connect(maker).cancelOrder(0)).to.emit(otcSwap, 'OrderCanceled')
+      expect(await tokenA.balanceOf(maker.address)).to.equal(makerA0)
+      expect(await otcSwap.claimable(maker.address, tokenA.target)).to.equal(sellAmount)
+
+      await expect(otcSwap.connect(maker).withdraw(tokenA.target, sellAmount))
+        .to.emit(otcSwap, 'ClaimWithdrawn')
       expect(await tokenA.balanceOf(maker.address)).to.equal(makerA0 + sellAmount)
+      expect(await otcSwap.claimable(maker.address, tokenA.target)).to.equal(0)
     })
   })
 })
