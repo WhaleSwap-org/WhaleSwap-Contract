@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-02-22T01:54:51.731Z",
+  "network": {
+    "name": "amoy",
+    "chainId": 80002
+  },
+  "deployer": "0x63bC72B99D3b5bc1a97bD6e843b669B65a690a66",
+  "orderCreationFee": "1",
+  "orderCreationFeeWei": "1000000000000000000",
+  "contracts": {
+    "whaleSwap": "0x0aB6ca718d12349B5477fD480a13F5e21a786222",
+    "feeToken": "0x1fa9Bd7a8BC309e12a17635Af482f962372A79Ee",
+    "feeToken6": "0x2F2a8d65a0894613cad223308f1528c9793e21DC",
+    "tokenA": "0xA9840bb54084091DbFaa9e2E0925317F870DA0D8",
+    "tokenB": "0xC73c204A6EbEe4b53C913894749a22db169454e7",
+    "allowedTokens": [
+      "0x1fa9Bd7a8BC309e12a17635Af482f962372A79Ee",
+      "0x2F2a8d65a0894613cad223308f1528c9793e21DC",
+      "0xA9840bb54084091DbFaa9e2E0925317F870DA0D8",
+      "0xC73c204A6EbEe4b53C913894749a22db169454e7"
+    ]
+  },
+  "fundedAccounts": [
+    "0x63bc72b99d3b5bc1a97bd6e843b669b65a690a66"
+  ],
+  "distribution": {
+    "token18Units": "50000",
+    "token6Units": "50000"
+  }
+}
