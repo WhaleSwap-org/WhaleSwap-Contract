@@ -142,14 +142,14 @@ For local UI + contract testing, use the dedicated local script (does not use ex
 npx hardhat node
 ```
 
-2. In another terminal, deploy local fee token, trade tokens, and OTCSwap:
+2. In another terminal, deploy local fee token, trade tokens, and WhaleSwap:
 ```bash
 npm run deploy:local
 ```
 
 This script:
 - Deploys `LFT` (fee token), `LTKA`, and `LTKB`
-- Deploys `OTCSwap` with those tokens in the initial allowlist
+- Deploys `WhaleSwap` with those tokens in the initial allowlist
 - Funds local test accounts with the deployed tokens
 - Writes deployment output to `deployments/local.json`
 - Updates UI local deployment file at `../whaleswap-ui/js/local-dev.deployment.js`
@@ -181,6 +181,7 @@ Hardhat network RPC URLs are configured in `hardhat.config.js`:
 The deploy script loads a per-network allowlist file by default:
 
 - `allowed-tokens.<network>.json` (e.g. `allowed-tokens.polygon.json`, `allowed-tokens.bsc.json`)
+- There is no shared fallback allowlist; each network uses its own file.
 
 You can override the allowlist path via:
 
@@ -205,15 +206,18 @@ If you prefer, you can set:
 - `POLYGONSCAN_API_KEY`
 - `BSCSCAN_API_KEY`
 
-Manual verification examples:
+Manual verification fallback:
 
 ```bash
-# BSC (example)
-npx hardhat verify --network bsc --constructor-args scripts/verify-args-bsc.js <DEPLOYED_ADDRESS>
-
-# Polygon (example)
-npx hardhat verify --network polygon --constructor-args scripts/verify-args-polygon.js <DEPLOYED_ADDRESS>
+# Use the exact command printed by scripts/deploy.js if auto-verify fails.
+npx hardhat verify --network <network> <DEPLOYED_ADDRESS> "<FEE_TOKEN_ADDRESS>" "<FEE_AMOUNT_BASE_UNITS>" '<ALLOWED_TOKENS_JSON_ARRAY>'
 ```
+
+Where:
+
+- `FEE_TOKEN_ADDRESS` comes from your network-specific env var (for example `POLYGON_FEE_TOKEN_ADDRESS` or `BSC_FEE_TOKEN_ADDRESS`).
+- `FEE_AMOUNT_BASE_UNITS` is `ORDER_CREATION_FEE` converted using the network fee token decimals (the deploy script computes this with `ethers.parseUnits`).
+- `ALLOWED_TOKENS_JSON_ARRAY` is the exact allowlist array used during deployment (from `allowed-tokens.<network>.json` unless overridden via env).
 
 ## Architecture
 
