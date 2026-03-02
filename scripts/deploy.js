@@ -64,11 +64,13 @@ async function main() {
   const ORDER_CREATION_FEE = getRequiredEnv("ORDER_CREATION_FEE");
 
   const feeTokenEnvKeyByNetwork = {
+    ethereum: "ETHEREUM_FEE_TOKEN_ADDRESS",
     polygon: "POLYGON_FEE_TOKEN_ADDRESS",
     bsc: "BSC_FEE_TOKEN_ADDRESS",
     amoy: "AMOY_FEE_TOKEN_ADDRESS",
   };
   const feeDecimalsEnvKeyByNetwork = {
+    ethereum: "ETHEREUM_FEE_TOKEN_DECIMALS",
     polygon: "POLYGON_FEE_TOKEN_DECIMALS",
     bsc: "BSC_FEE_TOKEN_DECIMALS",
     amoy: "AMOY_FEE_TOKEN_DECIMALS",
@@ -106,6 +108,7 @@ async function main() {
   // Allowlist config: prefer explicit per-network env var; otherwise use the committed
   // `allowed-tokens.<network>.json`. Do NOT fall back to a shared allowlist file.
   const allowlistEnvKeyByNetwork = {
+    ethereum: "ETHEREUM_ALLOWED_TOKENS_PATH",
     polygon: "POLYGON_ALLOWED_TOKENS_PATH",
     bsc: "BSC_ALLOWED_TOKENS_PATH",
     amoy: "AMOY_ALLOWED_TOKENS_PATH",
@@ -158,16 +161,16 @@ async function main() {
     allowedTokens: ALLOWED_TOKENS
   });
 
-  if (network.name === "polygon" || network.name === "mumbai" || network.name === "amoy" || network.name === "bsc") {
+  if (network.name === "ethereum" || network.name === "polygon" || network.name === "mumbai" || network.name === "amoy" || network.name === "bsc") {
     console.log("\n🔍 Starting contract verification process...");
     console.log("⏳ Waiting for block confirmations (this may take a few minutes)...");
     
     // Wait for more confirmations to ensure the contract is properly indexed
-    const confirmations = network.name === "polygon" ? 10 : 5;
+    const confirmations = (network.name === "polygon" || network.name === "ethereum") ? 10 : 5;
     await otcSwap.deploymentTransaction().wait(confirmations);
     console.log(`✅ ${confirmations} confirmations received`);
     
-    // Additional wait time for Polygon explorer to index the contract
+    // Additional wait time for explorer indexing
     console.log("⏳ Waiting additional 60 seconds for explorer to index the contract...");
     await new Promise(resolve => setTimeout(resolve, 60000));
     

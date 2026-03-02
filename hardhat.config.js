@@ -45,6 +45,11 @@ module.exports = {
       accounts: [process.env.PRIVATE_KEY].filter(Boolean),
       chainId: 137
     },
+    ethereum: {
+      url: process.env.ETHEREUM_RPC_URL || process.env.ETH_RPC_URL || "",
+      accounts: [process.env.PRIVATE_KEY].filter(Boolean),
+      chainId: 1
+    },
     bsc: {
       url: process.env.BSC_RPC_URL || "",
       accounts: [process.env.PRIVATE_KEY].filter(Boolean),

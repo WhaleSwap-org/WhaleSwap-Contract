@@ -162,16 +162,19 @@ This script:
 - `PRIVATE_KEY`
 - `ORDER_CREATION_FEE`
 - Fee token address for the selected network:
+  - `ETHEREUM_FEE_TOKEN_ADDRESS` (for `--network ethereum`)
   - `POLYGON_FEE_TOKEN_ADDRESS` (for `--network polygon`)
   - `BSC_FEE_TOKEN_ADDRESS` (for `--network bsc`)
   - `AMOY_FEE_TOKEN_ADDRESS` (for `--network amoy`)
 - Fee token decimals for the selected network:
+  - `ETHEREUM_FEE_TOKEN_DECIMALS` (for `--network ethereum`)
   - `POLYGON_FEE_TOKEN_DECIMALS` (for `--network polygon`)
   - `BSC_FEE_TOKEN_DECIMALS` (for `--network bsc`)
   - `AMOY_FEE_TOKEN_DECIMALS` (for `--network amoy`)
 
 Hardhat network RPC URLs are configured in `hardhat.config.js`:
 
+- `ETHEREUM_RPC_URL`
 - `POLYGON_RPC_URL`
 - `BSC_RPC_URL`
 - `AMOY_RPC_URL`
@@ -185,6 +188,7 @@ The deploy script loads a per-network allowlist file by default:
 
 You can override the allowlist path via:
 
+- `ETHEREUM_ALLOWED_TOKENS_PATH` (for `--network ethereum`)
 - `POLYGON_ALLOWED_TOKENS_PATH` (for `--network polygon`)
 - `BSC_ALLOWED_TOKENS_PATH` (for `--network bsc`)
 - `AMOY_ALLOWED_TOKENS_PATH` (for `--network amoy`)
@@ -196,6 +200,7 @@ Automatic verification is attempted at the end of `scripts/deploy.js` when deplo
 - `polygon`
 - `bsc`
 - `amoy`
+- `ethereum`
 
 Explorer API key (recommended):
 
